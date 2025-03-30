@@ -4,6 +4,7 @@ import { AccountType, BinanceApiResponse, EventType } from "./lib/type";
 import { handleSubscribeEvent, handleUnSubscribeEvent } from "./lib/events";
 import { AdjustPrice } from "./lib/utils";
 import dotenv from "dotenv";
+import { createClient, RedisClientType } from "redis";
 
 dotenv.config();
 
@@ -13,26 +14,32 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-const symbols = [
-  "btcusdt",
-  "ethusdt",
-  "bnbusdt",
-  "xrpusdt",
-  "solusdt",
-  "adausdt",
-  "dogeusdt",
-];
-
-let userAccountType: AccountType | null = null;
-const binanceWs = new WebSocket(
-  `${process.env.BINANCE_WS_URL}?streams=${symbols.map((s) => `${s}@trade`).join("/")}`
-);
-
-binanceWs.on("message", (data) => {
-  const parsedData = JSON.parse(data.toString()) as BinanceApiResponse;
-  AdjustPrice(parsedData.data);
+export const redisClient: RedisClientType = createClient({
+  url: "redis://localhost:6379",
 });
 
+let userAccountType: AccountType | null = null;
+
+function GetStockData() {
+  const symbols = [
+    "btcusdt",
+    "ethusdt",
+    "bnbusdt",
+    "xrpusdt",
+    "solusdt",
+    "adausdt",
+    "dogeusdt",
+  ];
+
+  const binanceWs = new WebSocket(
+    `${process.env.BINANCE_WS_URL}?streams=${symbols.map((s) => `${s}@trade`).join("/")}`
+  );
+
+  binanceWs.on("message", (data) => {
+    const parsedData = JSON.parse(data.toString()) as BinanceApiResponse;
+    AdjustPrice(parsedData.data);
+  });
+}
 export const subscribedUsers = new Map<string, WebSocket[]>(); // { userAccountType, [user1,user2] }
 
 function handleWebsocketMessageEvent(message: any, ws: WebSocket) {
@@ -68,6 +75,19 @@ wss.on("connection", (ws) => {
   });
 });
 
-server.listen(8080, () => {
-  console.log("websocket server is listening on port 8080");
-});
+async function StartServer() {
+  try {
+    await redisClient.connect();
+    console.log("Ws server connected successfully to the redis queue");
+  } catch (error) {
+    console.log("Error in connecting the Ws server to the redis queue");
+  }
+
+  server.listen(8080, () => {
+    console.log("websocket server is listening on port 8080");
+  });
+
+  GetStockData();
+}
+
+StartServer();

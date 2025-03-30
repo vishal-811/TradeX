@@ -1,4 +1,4 @@
-import { subscribedUsers } from "..";
+import { redisClient, subscribedUsers } from "..";
 import WebSocket from "ws";
 import { AccountType, BinanceApiData, Stock_Data_Type } from "./type";
 
@@ -44,7 +44,7 @@ export function AdjustPrice(data: BinanceApiData) {
   const { E, s, t, p, q, T } = data;
   const marketPrice = parseFloat(p);
 
-  Object.entries(spreadConfig).forEach(([accountType, spread]) => {
+  Object.entries(spreadConfig).forEach(async ([accountType, spread]) => {
     const { buyPrice, sellPrice } = calculateSpread(marketPrice, spread);
     const Stock_Data = {
       symbol: s,
@@ -54,8 +54,7 @@ export function AdjustPrice(data: BinanceApiData) {
       eventTimeStamp: E,
       account_Type: accountType as AccountType,
     };
-    console.log("The stock data looks like", Stock_Data);
     BroadCastStockData(accountType as AccountType, Stock_Data);
-    // Put the data to the queue so that it will be picked up by the timeseries server and put to the time series db.
+    await redisClient.lPush("stock_data", JSON.stringify(Stock_Data));
   });
 }
